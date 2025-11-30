@@ -7,7 +7,7 @@ import time
 import json
 from datetime import datetime
 
-app = FastAPI(title="🎮 TicTacToe Online API", version="2.2")
+app = FastAPI(title="🎮 TicTacToe Online API", version="2.3")
 
 app.add_middleware(
     CORSMiddleware,
@@ -41,6 +41,18 @@ def check_winner(board):
             return board[line[0]]
     if " " not in board:
         return "D" # Ничья
+    return None
+
+def get_winning_line(board):
+    """🔥 Возвращает индексы победной линии"""
+    wins = [
+        [0,1,2], [3,4,5], [6,7,8],  # Горизонтали
+        [0,3,6], [1,4,7], [2,5,8],  # Вертикали
+        [0,4,8], [2,4,6]            # Диагонали
+    ]
+    for line in wins:
+        if board[line[0]] == board[line[1]] == board[line[2]] != " ":
+            return line
     return None
 
 def cleanup_old_lobbies():
@@ -231,6 +243,16 @@ async def get_game(lobby_id: str):
     if not lobby:
         raise HTTPException(status_code=404, detail="Lobby not found")
    
+    # ⭐ 🔥 ДОБАВЛЯЕМ ПОБЕДНУЮ ЛИНИЮ В ОТВЕТ!
+    current_game = lobby["current_game"]
+    if current_game < len(lobby["games"]):
+        game = lobby["games"][current_game]
+        if game.get("winner") and game["winner"] != "D":
+            winning_line = get_winning_line(game["board"])
+            lobby["winning_line"] = winning_line
+        else:
+            lobby["winning_line"] = None
+   
     print(f"🔍 {lobby_id}: запрос состояния")
     return lobby
 
@@ -273,23 +295,20 @@ async def make_move(lobby_id: str, move: GameMove):
        
         print(f"🏆 {lobby_id}: {winner} {'победил' if winner != 'D' else 'ничья'}! Счёт: {lobby['score']}")
        
-        # ⭐ ПОКАЗЫВАЕМ РЕЗУЛЬТАТ
+        # ⭐ 🔥 КРИТИЧНО: НЕ СОЗДАЕМ НОВУЮ ИГРУ СРАЗУ!
         response["winner"] = winner
         response["game_ended"] = True
         response["final_score"] = lobby["score"]
         
-        # ✅ НОВАЯ ИГРА (до 5 игр)
-        if lobby["current_game"] < 4:
-            lobby["current_game"] += 1
-            lobby["games"].append({
-                "board": [" "] * 9,
-                "current_turn": lobby["player1"],  # X всегда начинает
-                "winner": None
-            })
-            response["new_game_available"] = True
-            response["next_game_index"] = lobby["current_game"]
-        else:
-            response["series_ended"] = True
+        # ⭐ 🔥 ОТДАЕМ ПОБЕДНУЮ ЛИНИЮ!
+        if winner != "D":
+            winning_line = get_winning_line(game["board"])
+            response["winning_line"] = winning_line
+            print(f"🎯 Победная линия: {winning_line}")
+        
+        # ⭐ 🔥 НОВАЯ ИГРА ТОЛЬКО ЧЕРЕЗ 5 СЕКУНД!
+        response["new_game_delay"] = 5
+        
     else:
         print(f"✅ {lobby_id}: {symbol} в клетку {move.cell}")
    
