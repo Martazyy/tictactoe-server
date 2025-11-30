@@ -7,7 +7,7 @@ import time
 import json
 from datetime import datetime
 
-app = FastAPI(title="🎮 TicTacToe Online API", version="2.1")
+app = FastAPI(title="🎮 TicTacToe Online API", version="2.2")
 
 app.add_middleware(
     CORSMiddleware,
@@ -147,7 +147,6 @@ async def join_matchmaking(data: JoinMatchmaking):
    
     return {"status": "waiting", "players_in_queue": len(matchmaking_queue)}
 
-# ⭐ 🔥 НОВЫЙ ENDPOINT - ПОИСК ГОТОВОГО ЛОББИ!
 @app.get("/api/find_game/{username}")
 async def find_game(username: str):
     """🔥 НАЙТИ ГОТОВОЕ ЛОББИ ПО ИМЕНИ ИГРОКА"""
@@ -263,28 +262,34 @@ async def make_move(lobby_id: str, move: GameMove):
     # ПЕРЕКЛЮЧЕНИЕ ХОДА
     game["current_turn"] = lobby["player2"] if symbol == "X" else lobby["player1"]
    
-    # ПРОВЕРКА ПОБЕДЫ
+    # ПРОВЕРКА ПОБЕДЫ/НИЧЬИ
     winner = check_winner(game["board"])
     response = {"success": True, "symbol": symbol, "cell": move.cell}
    
     if winner:
         game["winner"] = winner
-        lobby["score"][winner] = lobby["score"].get(winner, 0) + 1
+        if winner != "D":  # Не ничья
+            lobby["score"][winner] = lobby["score"].get(winner, 0) + 1
        
-        print(f"🏆 {lobby_id}: {winner} победил! Счёт: {lobby['score']}")
+        print(f"🏆 {lobby_id}: {winner} {'победил' if winner != 'D' else 'ничья'}! Счёт: {lobby['score']}")
        
-        # Новая игра (до 5 игр)
+        # ⭐ ПОКАЗЫВАЕМ РЕЗУЛЬТАТ
+        response["winner"] = winner
+        response["game_ended"] = True
+        response["final_score"] = lobby["score"]
+        
+        # ✅ НОВАЯ ИГРА (до 5 игр)
         if lobby["current_game"] < 4:
             lobby["current_game"] += 1
             lobby["games"].append({
                 "board": [" "] * 9,
-                "current_turn": lobby["player1"],
+                "current_turn": lobby["player1"],  # X всегда начинает
                 "winner": None
             })
-            response["new_game"] = True
-            response["winner"] = winner
+            response["new_game_available"] = True
+            response["next_game_index"] = lobby["current_game"]
         else:
-            response["game_over"] = True
+            response["series_ended"] = True
     else:
         print(f"✅ {lobby_id}: {symbol} в клетку {move.cell}")
    
