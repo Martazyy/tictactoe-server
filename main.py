@@ -69,11 +69,25 @@ async def health():
         "timestamp": datetime.now().isoformat()
     }
 
+# ⭐ НОВЫЙ! ПОКАЗЫВАЕТ ОЧЕРЕДЬ БЕЗ ДОБАВЛЕНИЯ
+@app.get("/api/queue_status")
+async def queue_status():
+    global matchmaking_queue
+    cleanup_old_lobbies()
+    
+    # Только свежие игроки
+    active_queue = [p for p in matchmaking_queue if time.time() - p["timestamp"] < 30]
+    
+    print(f"📊 СТАТУС ОЧЕРЕДИ: {len(active_queue)} игроков")
+    return {
+        "queue_size": len(active_queue), 
+        "active_players": [p["username"] for p in active_queue]
+    }
+
 @app.post("/api/join_matchmaking")
 async def join_matchmaking(data: JoinMatchmaking):
     global matchmaking_queue
     
-    # ⭐ ФИКС #1: УНИКАЛЬНЫЙ ID
     player_id = str(uuid.uuid4())
     player = {
         "id": player_id, 
@@ -81,19 +95,19 @@ async def join_matchmaking(data: JoinMatchmaking):
         "timestamp": time.time()
     }
     
-    # ⭐ ФИКС #2: НЕ ДУБЛИРУЕМ ИГРОКОВ
+    # ⭐ НЕ ДУБЛИРУЕМ ИГРОКОВ
     for p in matchmaking_queue:
         if p["username"] == data.username and (time.time() - p["timestamp"]) < 10:
             print(f"⏳ Игрок {data.username} уже в очереди")
             return {"status": "waiting", "players_in_queue": len(matchmaking_queue)}
     
-    # ⭐ ФИКС #3: ОЧИСТКА СТАРЫХ (>30 сек)
+    # ⭐ ОЧИСТКА СТАРЫХ
     matchmaking_queue = [p for p in matchmaking_queue if time.time() - p["timestamp"] < 30]
     
     matchmaking_queue.append(player)
     print(f"👥 Очередь: {len(matchmaking_queue)} игроков - {data.username}")
     
-    # ⭐ ФИКС #4: ПАРА ТОЛЬКО ПРИ 2+ ИГРОКАХ
+    # ⭐ СОЗДАЁМ ПАРУ ПРИ 2+ ИГРОКАХ
     if len(matchmaking_queue) >= 2:
         player1 = matchmaking_queue.pop(0)
         player2 = matchmaking_queue.pop(0)
@@ -109,15 +123,15 @@ async def join_matchmaking(data: JoinMatchmaking):
             "current_game": 0,
             "games": [{
                 "board": [" "] * 9,
-                "current_turn": player1["id"],  # X всегда начинает
+                "current_turn": player1["id"],  # X начинает
                 "winner": None
             }],
             "created_at": time.time()
         }
         
-        print(f"🎮 ✅ ЛОББИ СОЗДАНО {lobby_id}: {player1['username']} (X) vs {player2['username']} (O)")
+        print(f"🎮 ✅ ЛОББИ {lobby_id}: {player1['username']} (X) vs {player2['username']} (O)")
         
-        # ТОЧНО определяем роли
+        # Определяем роли
         if player1["id"] == player_id:
             return {
                 "status": "found",
@@ -162,20 +176,20 @@ async def make_move(lobby_id: str, move: GameMove):
     
     game = lobby["games"][current_game]
     
-    # ✅ ПРОВЕРКИ
+    # ПРОВЕРКИ
     if game["current_turn"] != move.player_id:
         raise HTTPException(status_code=403, detail=f"❌ Не ваш ход!")
     if game["board"][move.cell] != " ":
         raise HTTPException(status_code=400, detail="❌ Клетка занята!")
     
-    # ✅ СИМВОЛ
+    # СИМВОЛ
     symbol = "X" if lobby["player1"] == move.player_id else "O"
     game["board"][move.cell] = symbol
     
-    # ✅ ПЕРЕКЛЮЧЕНИЕ ХОДА
+    # ПЕРЕКЛЮЧЕНИЕ ХОДА
     game["current_turn"] = lobby["player2"] if symbol == "X" else lobby["player1"]
     
-    # ✅ ПРОВЕРКА ПОБЕДЫ
+    # ПРОВЕРКА ПОБЕДЫ
     winner = check_winner(game["board"])
     response = {"success": True, "symbol": symbol, "cell": move.cell}
     
@@ -190,13 +204,13 @@ async def make_move(lobby_id: str, move: GameMove):
             lobby["current_game"] += 1
             lobby["games"].append({
                 "board": [" "] * 9,
-                "current_turn": lobby["player1"],  # X начинает
+                "current_turn": lobby["player1"],
                 "winner": None
             })
             response["new_game"] = True
             response["winner"] = winner
         else:
-            response["game_over"] = True  # Матч окончен
+            response["game_over"] = True
     else:
         print(f"✅ {lobby_id}: {symbol} в клетку {move.cell}")
     
