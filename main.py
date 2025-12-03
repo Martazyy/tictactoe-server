@@ -265,8 +265,8 @@ async def make_move(lobby_id: str, move: GameMove):
     if not lobby:
         raise HTTPException(status_code=404, detail="Lobby not found")
    
-    current_game_idx = lobby["current_game"]
-    game = lobby["games"][current_game_idx]
+    current_game = lobby["current_game"]
+    game = lobby["games"][current_game]
    
     # ПРОВЕРКИ
     if game["current_turn"] != move.player_id:
@@ -274,7 +274,7 @@ async def make_move(lobby_id: str, move: GameMove):
     if game["board"][move.cell] != " ":
         raise HTTPException(status_code=400, detail="Клетка занята!")
    
-    # ДЕЛАЕМ ХОД
+    # ХОД
     symbol = "X" if lobby["player1"] == move.player_id else "O"
     game["board"][move.cell] = symbol
     game["current_turn"] = lobby["player2"] if symbol == "X" else lobby["player1"]
@@ -296,21 +296,21 @@ async def make_move(lobby_id: str, move: GameMove):
        
         print(f"Победа! {winner} | Счёт: {lobby['score']}")
        
-        # КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: СОЗДАЁМ НОВУЮ ИГРУ НА СЕРВЕРЕ!
-        if lobby["current_game"] < 4:  # всего будет 5 игр (0..4)
+        # АВТОМАТИЧЕСКИ СОЗДАЁМ НОВУЮ ИГРУ НА СЕРВЕРЕ!
+        if lobby["current_game"] < 4:  # до 5 игр (0..4)
             lobby["current_game"] += 1
             lobby["games"].append({
                 "board": [" "] * 9,
-                "current_turn": lobby["player1"],  # X всегда начинает
+                "current_turn": lobby["player1"],  # X начинает
                 "winner": None
             })
             response["new_game_started"] = True
             response["next_game_index"] = lobby["current_game"]
-            print(f"Автоматически начата игра #{lobby['current_game'] + 1}")
+            print(f"НОВАЯ ИГРА #{lobby['current_game'] + 1} создана автоматически!")
         else:
-            response["series_ended"] = True  # 5 игр сыграно
+            response["series_ended"] = True
     else:
-        print(f"Ход: {symbol} → клетка {move.cell}")
+        print(f"Ход: {symbol} → {move.cell}")
    
     return response
 
