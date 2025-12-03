@@ -265,52 +265,52 @@ async def make_move(lobby_id: str, move: GameMove):
     if not lobby:
         raise HTTPException(status_code=404, detail="Lobby not found")
    
-    current_game = lobby["current_game"]
-    if current_game >= len(lobby["games"]):
-        raise HTTPException(status_code=400, detail="Game not found")
-   
-    game = lobby["games"][current_game]
+    current_game_idx = lobby["current_game"]
+    game = lobby["games"][current_game_idx]
    
     # ПРОВЕРКИ
     if game["current_turn"] != move.player_id:
-        raise HTTPException(status_code=403, detail=f"❌ Не ваш ход!")
+        raise HTTPException(status_code=403, detail="Не ваш ход!")
     if game["board"][move.cell] != " ":
-        raise HTTPException(status_code=400, detail="❌ Клетка занята!")
+        raise HTTPException(status_code=400, detail="Клетка занята!")
    
-    # СИМВОЛ
+    # ДЕЛАЕМ ХОД
     symbol = "X" if lobby["player1"] == move.player_id else "O"
     game["board"][move.cell] = symbol
-   
-    # ПЕРЕКЛЮЧЕНИЕ ХОДА
     game["current_turn"] = lobby["player2"] if symbol == "X" else lobby["player1"]
    
-    # ПРОВЕРКА ПОБЕДЫ/НИЧЬИ
     winner = check_winner(game["board"])
     response = {"success": True, "symbol": symbol, "cell": move.cell}
    
     if winner:
         game["winner"] = winner
-        if winner != "D":  # Не ничья
-            lobby["score"][winner] = lobby["score"].get(winner, 0) + 1
-       
-        print(f"🏆 {lobby_id}: {winner} {'победил' if winner != 'D' else 'ничья'}! Счёт: {lobby['score']}")
-       
-        # ⭐ 🔥 КРИТИЧНО: НЕ СОЗДАЕМ НОВУЮ ИГРУ СРАЗУ!
-        response["winner"] = winner
-        response["game_ended"] = True
-        response["final_score"] = lobby["score"]
-        
-        # ⭐ 🔥 ОТДАЕМ ПОБЕДНУЮ ЛИНИЮ!
         if winner != "D":
-            winning_line = get_winning_line(game["board"])
-            response["winning_line"] = winning_line
-            print(f"🎯 Победная линия: {winning_line}")
-        
-        # ⭐ 🔥 НОВАЯ ИГРА ТОЛЬКО ЧЕРЕЗ 5 СЕКУНД!
-        response["new_game_delay"] = 5
-        
+            lobby["score"][winner] += 1
+       
+        response.update({
+            "winner": winner,
+            "game_ended": True,
+            "final_score": lobby["score"],
+            "winning_line": get_winning_line(game["board"]) if winner != "D" else None
+        })
+       
+        print(f"Победа! {winner} | Счёт: {lobby['score']}")
+       
+        # КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: СОЗДАЁМ НОВУЮ ИГРУ НА СЕРВЕРЕ!
+        if lobby["current_game"] < 4:  # всего будет 5 игр (0..4)
+            lobby["current_game"] += 1
+            lobby["games"].append({
+                "board": [" "] * 9,
+                "current_turn": lobby["player1"],  # X всегда начинает
+                "winner": None
+            })
+            response["new_game_started"] = True
+            response["next_game_index"] = lobby["current_game"]
+            print(f"Автоматически начата игра #{lobby['current_game'] + 1}")
+        else:
+            response["series_ended"] = True  # 5 игр сыграно
     else:
-        print(f"✅ {lobby_id}: {symbol} в клетку {move.cell}")
+        print(f"Ход: {symbol} → клетка {move.cell}")
    
     return response
 
