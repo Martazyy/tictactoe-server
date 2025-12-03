@@ -260,59 +260,52 @@ async def get_game(lobby_id: str):
 async def make_move(lobby_id: str, move: GameMove):
     global lobbies
     cleanup_old_lobbies()
-   
+  
     lobby = lobbies.get(lobby_id)
     if not lobby:
         raise HTTPException(status_code=404, detail="Lobby not found")
-   
-    current_game = lobby["current_game"]
-    game = lobby["games"][current_game]
-   
+  
+    current_game_idx = lobby["current_game"]
+    game = lobby["games"][current_game_idx]
+  
     # ПРОВЕРКИ
     if game["current_turn"] != move.player_id:
         raise HTTPException(status_code=403, detail="Не ваш ход!")
     if game["board"][move.cell] != " ":
         raise HTTPException(status_code=400, detail="Клетка занята!")
-   
-    # ХОД
+  
+    # ДЕЛАЕМ ХОД
     symbol = "X" if lobby["player1"] == move.player_id else "O"
     game["board"][move.cell] = symbol
     game["current_turn"] = lobby["player2"] if symbol == "X" else lobby["player1"]
-   
+  
     winner = check_winner(game["board"])
-    response = {"success": True, "symbol": symbol, "cell": move.cell}
-   
+
+    # ВСЕГДА ВОЗВРАЩАЕМ ПОЛНОЕ СОСТОЯНИЕ!
+    current_game = lobby["current_game"]
+    if current_game < len(lobby["games"]):
+        current_board = lobby["games"][current_game]["board"]
+        if winner and winner != "D":
+            lobby["winning_line"] = get_winning_line(current_board)
+        else:
+            lobby["winning_line"] = None
+
     if winner:
         game["winner"] = winner
         if winner != "D":
             lobby["score"][winner] += 1
-       
-        response.update({
-            "winner": winner,
-            "game_ended": True,
-            "final_score": lobby["score"],
-            "winning_line": get_winning_line(game["board"]) if winner != "D" else None
-        })
-       
-        print(f"Победа! {winner} | Счёт: {lobby['score']}")
-       
-        # АВТОМАТИЧЕСКИ СОЗДАЁМ НОВУЮ ИГРУ НА СЕРВЕРЕ!
-        if lobby["current_game"] < 4:  # до 5 игр (0..4)
+
+        # СОЗДАЁМ НОВУЮ ИГРУ СРАЗУ!
+        if lobby["current_game"] < 4:
             lobby["current_game"] += 1
             lobby["games"].append({
                 "board": [" "] * 9,
-                "current_turn": lobby["player1"],  # X начинает
+                "current_turn": lobby["player1"],
                 "winner": None
             })
-            response["new_game_started"] = True
-            response["next_game_index"] = lobby["current_game"]
-            print(f"НОВАЯ ИГРА #{lobby['current_game'] + 1} создана автоматически!")
-        else:
-            response["series_ended"] = True
-    else:
-        print(f"Ход: {symbol} → {move.cell}")
-   
-    return response
+
+    # ВОЗВРАЩАЕМ ВСЁ ЛОББИ — КАК В get_game!
+    return lobby  # ← ЭТО ГЛАВНОЕ ИЗМЕНЕНИЕ!
 
 @app.delete("/api/lobby/{lobby_id}")
 async def delete_lobby(lobby_id: str):
